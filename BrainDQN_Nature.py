@@ -49,8 +49,8 @@ class BrainDQN:
 
 		# saving and loading networks
 		self.saver = tf.train.Saver()
-		self.session = tf.InteractiveSession()
-		self.session.run(tf.initialize_all_variables())
+		self.session = tf.InteractiveSession() # 和tf.Session()有一些差别，他允许在运行图的时候，插入一些计算图；而对于tf.Session()则在启动session之前直接构造整个计算图
+		self.session.run(tf.initialize_all_variables()) 
 		checkpoint = tf.train.get_checkpoint_state("saved_networks")
 		if checkpoint and checkpoint.model_checkpoint_path:
 				self.saver.restore(self.session, checkpoint.model_checkpoint_path)
@@ -121,11 +121,11 @@ class BrainDQN:
 		y_batch = []
 		QValue_batch = self.QValueT.eval(feed_dict={self.stateInputT:nextState_batch})
 		for i in range(0,BATCH_SIZE):
-			terminal = minibatch[i][4]
+			terminal = minibatch[i][4] # replayMemory中第四维存储是否撞墙
 			if terminal:
-				y_batch.append(reward_batch[i])
+				y_batch.append(reward_batch[i]) # 当前重新跑，所以是直接添加当前的reward
 			else:
-				y_batch.append(reward_batch[i] + GAMMA * np.max(QValue_batch[i]))
+				y_batch.append(reward_batch[i] + GAMMA * np.max(QValue_batch[i])) # 累加之前的所有时间的最大q值
 
 		self.trainStep.run(feed_dict={
 			self.yInput : y_batch,
@@ -143,11 +143,21 @@ class BrainDQN:
 		
 	def setPerception(self,nextObservation,action,reward,terminal):
 		#newState = np.append(nextObservation,self.currentState[:,:,1:],axis = 2)
-		newState = np.append(self.currentState[:,:,1:],nextObservation,axis = 2)
+		# currentState: 4个observation, 维度是80x80x4
+		# [:,:,1:] 对前两维的所有元素以及第三维的从1开始的所有元素, 所以这个是80x80x3
+		# 所以，这个相当于，每次的nextObservation都加在80x80x4数组的最后一维
+
+		newState = np.append(self.currentState[:,:,1:],nextObservation,axis = 2) 
+		# if terminal: # 判断是否撞墙，需要重新计算
+		# 	print("=======")
+
+		# 每次累加 {action,reward,newState,terminal}作为新的状态
+
+		# 在队列中存储 当前状态 t, 执行的动作 a，反馈的r，以及a动作导致的新状态 t+1，是否重跑
 		self.replayMemory.append((self.currentState,action,reward,newState,terminal))
 		if len(self.replayMemory) > REPLAY_MEMORY:
-			self.replayMemory.popleft()
-		if self.timeStep > OBSERVE:
+			self.replayMemory.popleft() # 最老的数据被丢弃
+		if self.timeStep > OBSERVE: # 只有观测的数据得到一定数量，才进行下面的网络training
 			# Train the network
 			self.trainQNetwork()
 
@@ -190,7 +200,7 @@ class BrainDQN:
 		self.currentState = np.stack((observation, observation, observation, observation), axis = 2)
 
 	def weight_variable(self,shape):
-		initial = tf.truncated_normal(shape, stddev = 0.01)
+		initial = tf.random.truncated_normal(shape, stddev = 0.01)
 		return tf.Variable(initial)
 
 	def bias_variable(self,shape):
